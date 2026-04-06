@@ -440,7 +440,7 @@ async function fetchAllOrders(start, end){
   const total = first.paging?.total || (first.list || []).length;
   let allOrders = [...(first.list || [])];
 
-  const maxPages = Math.min(totalPages, 30);
+  const maxPages = totalPages;
 
   for(let page = 2; page <= maxPages; page++){
     const next = await fetchOrdersPage(start, end, page, 100);
@@ -741,8 +741,32 @@ async function loadAll(){
       range = getQuickRange(currentQuick);
     }
 
-    const data = await fetchAllOrders(range.start, range.end);
-    const orders = data.list || [];
+const data = await fetchAllOrders(range.start, range.end);
+const orders = data.list || [];
+    console.log('TOTAL VTEX:', data.total);
+console.log('PEDIDOS CARREGADOS:', orders.length);
+console.log('PÁGINAS BUSCADAS:', data.fetchedPages);
+console.log('TOTAL DE PÁGINAS VTEX:', data.totalPages);
+console.log('PRIMEIRO PEDIDO:', orders[0]);
+console.log('ÚLTIMO PEDIDO:', orders[orders.length - 1]);
+
+const totalValueSum = orders.reduce((acc, o) => acc + (o.totalValue || 0), 0);
+console.log('SOMA totalValue (centavos):', totalValueSum);
+console.log('SOMA totalValue (reais):', totalValueSum / 100);
+
+const statusCounts = {};
+orders.forEach(o => {
+  statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
+});
+console.log('STATUS COUNTS:', statusCounts);
+
+const semValor = orders.filter(o => !o.totalValue);
+console.log('PEDIDOS SEM totalValue:', semValor.length);
+
+console.log('TOTAL VTEX:', data.total);
+console.log('PEDIDOS CARREGADOS:', orders.length);
+console.log('PÁGINAS BUSCADAS:', data.fetchedPages);
+console.log('TOTAL DE PÁGINAS VTEX:', data.totalPages);
     const m = calcMetrics(orders);
 
     let ordersPrev = null;
