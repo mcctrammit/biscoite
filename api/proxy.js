@@ -1,6 +1,8 @@
 export default async function handler(req, res) {
   try {
-    const url = `https://${process.env.VTEX_ACCOUNT}.vtexcommercestable.com.br/api/oms/pvt/orders`;
+    const { startDate, endDate } = req.query;
+
+    const url = `https://${process.env.VTEX_ACCOUNT}.vtexcommercestable.com.br/api/oms/pvt/orders?f_creationDate=creationDate:[${startDate} TO ${endDate}]`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -18,7 +20,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     return res.status(500).json({
-      ok: false,
       error: error.message
     });
   }
