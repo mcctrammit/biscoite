@@ -423,8 +423,8 @@ function toggleCompare(){
   document.getElementById('compare-dates').style.display = compareActive ? 'flex' : 'none';
 }
 
-async function fetchOrders(start, end, page = 1){
-  const query = `f_creationDate=creationDate%3A%5B${encodeURIComponent(start)}+TO+${encodeURIComponent(end)}%5D&orderBy=creationDate%2Cdesc&page=${page}&per_page=50`;
+async function fetchOrdersPage(start, end, page = 1, perPage = 100){
+  const query = `f_creationDate=creationDate%3A%5B${encodeURIComponent(start)}+TO+${encodeURIComponent(end)}%5D&orderBy=creationDate%2Cdesc&page=${page}&per_page=${perPage}`;
   const url = `${PROXY}?path=/api/oms/pvt/orders&query=${encodeURIComponent(query)}`;
   const r = await fetch(url);
   if(!r.ok) throw new Error(`Proxy retornou status ${r.status}`);
@@ -433,10 +433,32 @@ async function fetchOrders(start, end, page = 1){
   return data;
 }
 
-function calcMetrics(orders, total){
+async function fetchAllOrders(start, end){
+  const first = await fetchOrdersPage(start, end, 1, 100);
+
+  const totalPages = first.paging?.pages || 1;
+  const total = first.paging?.total || (first.list || []).length;
+  let allOrders = [...(first.list || [])];
+
+  const maxPages = Math.min(totalPages, 30);
+
+  for(let page = 2; page <= maxPages; page++){
+    const next = await fetchOrdersPage(start, end, page, 100);
+    allOrders = allOrders.concat(next.list || []);
+  }
+
+  return {
+    list: allOrders,
+    total,
+    fetchedPages: maxPages,
+    totalPages
+  };
+}
+
+function calcMetrics(orders){
   const gmv = orders.reduce((a, o) => a + (o.totalValue || 0), 0) / 100;
-  const count = total || orders.length;
-  const ticket = orders.length > 0 ? gmv / orders.length : 0;
+  const count = orders.length;
+  const ticket = count > 0 ? gmv / count : 0;
   const invoiced = orders.filter(o => o.status === 'invoiced').length;
   const canceled = orders.filter(o => o.status === 'canceled').length;
   return { gmv, count, ticket, invoiced, canceled };
@@ -639,7 +661,7 @@ function renderTimeChart(orders, ordersPrev){
           ticks:{
             font:{size:10,family:"'DM Mono',monospace"},
             color:'#555250',
-            callback:v => 'R$' + Math.round(v/1000) + 'k'
+            callback:v => fmtBRL(v)
           },
           grid:{color:'rgba(255,255,255,0.04)'},
           border:{color:'rgba(255,255,255,0.07)'}
@@ -649,8 +671,8 @@ function renderTimeChart(orders, ordersPrev){
   });
 }
 
-function renderOrders(orders, total){
-  document.getElementById('orders-count').textContent = `${total.toLocaleString('pt-BR')} pedidos no período`;
+function renderOrders(orders){
+  document.getElementById('orders-count').textContent = `${orders.length.toLocaleString('pt-BR')} pedidos no período`;
 
   if(!orders.length){
     document.getElementById('orders-area').innerHTML = '<p style="color:var(--text3);font-size:12px;font-family:var(--mono);padding:16px 0;">nenhum pedido encontrado.</p>';
@@ -698,8 +720,7 @@ function showLoading(){
     <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
     <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
     <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
-    <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
-  `;
+    <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>`;
 }
 
 async function loadAll(){
@@ -720,10 +741,9 @@ async function loadAll(){
       range = getQuickRange(currentQuick);
     }
 
-    const data = await fetchOrders(range.start, range.end);
+    const data = await fetchAllOrders(range.start, range.end);
     const orders = data.list || [];
-    const total = data.paging?.total || orders.length;
-    const m = calcMetrics(orders, total);
+    const m = calcMetrics(orders);
 
     let ordersPrev = null;
     let mPrev = null;
@@ -731,9 +751,9 @@ async function loadAll(){
     if(compareActive){
       const r2 = getCompareRange();
       if(r2){
-        const data2 = await fetchOrders(r2.start, r2.end);
+        const data2 = await fetchAllOrders(r2.start, r2.end);
         ordersPrev = data2.list || [];
-        mPrev = calcMetrics(ordersPrev, data2.paging?.total || ordersPrev.length);
+        mPrev = calcMetrics(ordersPrev);
 
         const b = document.getElementById('compare-banner');
         document.getElementById('compare-banner-text').textContent =
@@ -745,7 +765,7 @@ async function loadAll(){
     renderMetrics(m, mPrev);
     renderStatusChart(orders);
     renderTimeChart(orders, ordersPrev);
-    renderOrders(orders, total);
+    renderOrders(orders);
 
     document.getElementById('last-update').textContent =
       'atualizado ' + new Date().toLocaleTimeString('pt-BR');
