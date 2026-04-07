@@ -424,34 +424,78 @@ function toggleCompare(){
 }
 
 async function fetchOrdersPage(start, end, page = 1, perPage = 100){
-  const query = `f_creationDate=creationDate%3A%5B${encodeURIComponent(start)}+TO+${encodeURIComponent(end)}%5D&orderBy=creationDate%2Cdesc&page=${page}&per_page=${perPage}`;
-  const url = `${PROXY}?path=/api/oms/pvt/orders&query=${encodeURIComponent(query)}`;
+  // Monta a query string da VTEX diretamente (sem double-encode)
+  const vtexQuery = [
+    `f_creationDate=creationDate:[${start} TO ${end}]`,
+    `orderBy=creationDate,desc`,
+    `page=${page}`,
+    `per_page=${perPage}`
+  ].join('&');
+
+  const url = `${PROXY}?path=/api/oms/pvt/orders&query=${encodeURIComponent(vtexQuery)}`;
   const r = await fetch(url);
-  if(!r.ok) throw new Error(`Proxy retornou status ${r.status}`);
+  if(!r.ok) throw new Error(`Proxy retornou status ${r.status} (período: ${start} → ${end}, página ${page})`);
   const data = await r.json();
   if(data.error) throw new Error(data.error);
   return data;
 }
 
-async function fetchAllOrders(start, end){
+// Busca todos os pedidos de um intervalo respeitando o limite de 2000 da VTEX (20 páginas × 100)
+async function fetchChunk(start, end){
   const first = await fetchOrdersPage(start, end, 1, 100);
-
-  const totalPages = first.paging?.pages || 1;
-  const total = first.paging?.total || (first.list || []).length;
+  const totalPages = Math.min(first.paging?.pages || 1, 20); // VTEX: máx 2000 registros por query
   let allOrders = [...(first.list || [])];
 
-  const maxPages = totalPages;
-
-  for(let page = 2; page <= maxPages; page++){
+  for(let page = 2; page <= totalPages; page++){
     const next = await fetchOrdersPage(start, end, page, 100);
     allOrders = allOrders.concat(next.list || []);
   }
 
+  return allOrders;
+}
+
+// Converte ms timestamp para string no formato VTEX (igual ao fmtDT mas sem viés de timezone)
+function msToVtexDT(ms){
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}Z`;
+}
+
+// Divide o período em janelas de até 7 dias para contornar o limite de 2000 pedidos/query
+async function fetchAllOrders(start, end){
+  const startMs = new Date(start).getTime();
+  const endMs   = new Date(end).getTime();
+  const chunkMs = 7 * 24 * 60 * 60 * 1000; // 7 dias em ms
+
+  const chunks = [];
+  let cursor = startMs;
+  while(cursor < endMs){
+    const chunkEnd = Math.min(cursor + chunkMs - 1000, endMs);
+    chunks.push({
+      start: msToVtexDT(cursor),
+      end:   msToVtexDT(chunkEnd)
+    });
+    cursor = chunkEnd + 1000;
+  }
+
+  let allOrders = [];
+  for(const chunk of chunks){
+    const orders = await fetchChunk(chunk.start, chunk.end);
+    allOrders = allOrders.concat(orders);
+  }
+
+  // Deduplica por orderId (pedidos na fronteira de chunk podem aparecer duas vezes)
+  const seen = new Set();
+  allOrders = allOrders.filter(o => {
+    if(seen.has(o.orderId)) return false;
+    seen.add(o.orderId);
+    return true;
+  });
+
   return {
     list: allOrders,
-    total,
-    fetchedPages: maxPages,
-    totalPages
+    total: allOrders.length,
+    fetchedPages: chunks.length,
+    totalPages: chunks.length
   };
 }
 
@@ -715,31 +759,37 @@ function hideError(){
   document.getElementById('error-box').classList.remove('visible');
 }
 
-function showLoading(){
+function showLoading(msg){
+  const label = msg ? `<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:8px 0 0;">${msg}</div>` : '';
   document.getElementById('metrics-area').innerHTML = `
     <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
     <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
     <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>
-    <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div></div></div>`;
+    <div class="metric-card"><div class="loading-placeholder"><div class="skeleton"></div><div class="skeleton" style="width:60%;height:32px;margin-top:12px;"></div>${label}</div>`;
 }
 
 async function loadAll(){
   hideError();
   document.getElementById('compare-banner').classList.remove('visible');
-  showLoading();
+
+  let range;
+  if(currentQuick === 'custom'){
+    range = getCustomRange();
+    if(!range){
+      showError('preencha as datas do período personalizado.');
+      return;
+    }
+  } else {
+    range = getQuickRange(currentQuick);
+  }
+
+  // Estima quantos chunks serão necessários para dar feedback ao usuário
+  const diffDays = Math.round((new Date(range.end) - new Date(range.start)) / (1000*60*60*24));
+  const chunksEst = Math.ceil(diffDays / 7) || 1;
+  const loadMsg = chunksEst > 1 ? `buscando em ${chunksEst} janelas de 7 dias...` : '';
+  showLoading(loadMsg);
 
   try {
-    let range;
-
-    if(currentQuick === 'custom'){
-      range = getCustomRange();
-      if(!range){
-        showError('preencha as datas do período personalizado.');
-        return;
-      }
-    } else {
-      range = getQuickRange(currentQuick);
-    }
 
 const data = await fetchAllOrders(range.start, range.end);
 const orders = data.list || [];
