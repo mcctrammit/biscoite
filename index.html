@@ -571,16 +571,21 @@
                         throw new Error(`Erro na API: ${response.status} - ${errorData.error || errorData.message || 'Erro desconhecido'}`);
                     }
 
-                    const data = await response.json();
-                    console.log('RETORNO VTEX:', data);
+                   const data = await response.json();
+
+console.log('RETORNO VTEX:', data);
 console.log('data.list existe?', !!data.list);
 console.log('quantidade na página:', data.list ? data.list.length : 0);
-                    if (data.list && data.list.length > 0) {
-                        allOrders.push(...data.list);
-                        console.log('TOTAL allOrders:', allOrders.length);
-console.log('PRIMEIRO PEDIDO:', allOrders[0]);
-                        console.log(`Página ${page}: ${data.list.length} pedidos carregados (total: ${allOrders.length})`);
-                        page++;
+
+if (data.list && data.list.length > 0) {
+    allOrders.push(...data.list);
+
+    console.log('TOTAL allOrders:', allOrders.length);
+    console.log('PRIMEIRO PEDIDO:', allOrders[0]);
+
+    console.log(`Página ${page}: ${data.list.length} pedidos carregados (total: ${allOrders.length})`);
+
+    page++;
                         
                         // Verificar se há mais páginas
                         if (data.list.length < perPage) {
