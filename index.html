@@ -666,7 +666,7 @@
         // Atualizar dashboard
         function updateDashboard(orders) {
             // GMV
-            const gmv = orders.reduce((sum, o) => sum + (o.value || 0), 0);
+            const gmv = orders.reduce((sum, o) => sum + (o.totalValue || 0), 0);
             document.getElementById('gmv-value').textContent = formatCurrency(gmv);
 
             // Total de pedidos
@@ -741,7 +741,7 @@
             const dailyGMV = {};
             orders.forEach(o => {
                 const date = formatDate(o.creationDate);
-                dailyGMV[date] = (dailyGMV[date] || 0) + (o.value || 0);
+                dailyGMV[date] = (dailyGMV[date] || 0) + (o.totalValue || 0);
             });
 
             const sortedDates = Object.keys(dailyGMV).sort((a, b) => {
@@ -821,7 +821,7 @@
                     <td>${order.orderId}</td>
                     <td>${formatDate(order.creationDate)}</td>
                     <td><span class="status-badge ${getStatusBadgeClass(order.status)}">${statusLabel(order.status)}</span></td>
-                    <td>${formatCurrency(order.value)}</td>
+                    <td>${formatCurrency(order.totalValue)}</td>
                     <td>${order.clientName || 'N/A'}</td>
                 `;
                 tbody.appendChild(tr);
