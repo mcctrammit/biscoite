@@ -52,8 +52,24 @@ export default async function handler(req, res) {
             }
         });
 
-        // Pegar resposta
-        const data = await vtexResponse.json();
+   // Pegar resposta em texto primeiro
+const responseText = await vtexResponse.text();
+
+console.log('Response Text:', responseText.substring(0, 500)); // Primeiros 500 caracteres
+
+// Tentar parsear como JSON
+let data;
+try {
+    data = JSON.parse(responseText);
+} catch (parseError) {
+    console.error('Erro ao fazer parse:', parseError);
+    return res.status(500).json({
+        error: 'Resposta da VTEX não é JSON',
+        responsePreview: responseText.substring(0, 500),
+        vtexStatus: vtexResponse.status,
+        vtexUrl: vtexUrl
+    });
+}
 
         // Log para debug
         console.log('Status VTEX:', vtexResponse.status);
