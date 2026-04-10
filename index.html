@@ -557,11 +557,11 @@
 
             while (hasMore) {
                 try {
-                    const queryPath = `/api/oms/pvt/orders?f_creationDate=creationDate:[${startISO} TO ${endISO}]&page=${page}&per_page=${perPage}&orderBy=creationDate,desc`;
+                    const queryPath = `/list/orders?f_creationDate=creationDate:[${startISO} TO ${endISO}]&page=${page}&per_page=${perPage}&orderBy=creationDate,desc`;
                     
                     const response = await fetch(`${PROXY_URL}?path=${encodeURIComponent(queryPath)}`, {
                         method: 'GET',
-                        headers: {aqui
+                        headers: {
                             'Content-Type': 'application/json'
                         }
                     });
@@ -571,21 +571,12 @@
                         throw new Error(`Erro na API: ${response.status} - ${errorData.error || errorData.message || 'Erro desconhecido'}`);
                     }
 
-                   const data = await response.json();
-
-console.log('RETORNO VTEX:', data);
-console.log('data.list existe?', !!data.list);
-console.log('quantidade na página:', data.list ? data.list.length : 0);
-
-if (data.list && data.list.length > 0) {
-    allOrders.push(...data.list);
-
-    console.log('TOTAL allOrders:', allOrders.length);
-    console.log('PRIMEIRO PEDIDO:', allOrders[0]);
-
-    console.log(`Página ${page}: ${data.list.length} pedidos carregados (total: ${allOrders.length})`);
-
-    page++;
+                    const data = await response.json();
+                    
+                    if (data.list && data.list.length > 0) {
+                        allOrders.push(...data.list);
+                        console.log(`Página ${page}: ${data.list.length} pedidos carregados (total: ${allOrders.length})`);
+                        page++;
                         
                         // Verificar se há mais páginas
                         if (data.list.length < perPage) {
