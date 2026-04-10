@@ -17,18 +17,28 @@ export default async function handler(req, res) {
         const VTEX_APP_KEY = process.env.VTEX_APP_KEY;
         const VTEX_APP_TOKEN = process.env.VTEX_APP_TOKEN;
 
+        console.log('=== DEBUG INÍCIO ===');
+        console.log('VTEX_ACCOUNT:', VTEX_ACCOUNT);
+        console.log('VTEX_APP_KEY existe:', !!VTEX_APP_KEY);
+        console.log('VTEX_APP_TOKEN existe:', !!VTEX_APP_TOKEN);
+
         // Validar credenciais
         if (!VTEX_ACCOUNT || !VTEX_APP_KEY || !VTEX_APP_TOKEN) {
             console.error('Variáveis de ambiente faltando');
             return res.status(500).json({ 
                 error: 'Configuração incompleta',
-                details: 'Variáveis VTEX não configuradas'
+                details: 'Variáveis VTEX não configuradas',
+                has_account: !!VTEX_ACCOUNT,
+                has_key: !!VTEX_APP_KEY,
+                has_token: !!VTEX_APP_TOKEN
             });
         }
 
         // Pegar o path da query string
         const { path } = req.query;
         
+        console.log('Path recebido:', path);
+
         if (!path) {
             return res.status(400).json({ 
                 error: 'Path obrigatório',
@@ -39,7 +49,7 @@ export default async function handler(req, res) {
         // Montar URL completa da VTEX
         const vtexUrl = `https://${VTEX_ACCOUNT}.vtexcommercestable.com.br/api/oms/pvt${path}`;
 
-        console.log('Fazendo requisição para:', vtexUrl);
+        console.log('URL VTEX completa:', vtexUrl);
 
         // Fazer requisição para VTEX
         const vtexResponse = await fetch(vtexUrl, {
@@ -52,31 +62,37 @@ export default async function handler(req, res) {
             }
         });
 
-   // Pegar resposta em texto primeiro
-const responseText = await vtexResponse.text();
+        console.log('Status da resposta VTEX:', vtexResponse.status);
+        console.log('Headers da resposta:', Object.fromEntries(vtexResponse.headers.entries()));
 
-console.log('Response Text:', responseText.substring(0, 500)); // Primeiros 500 caracteres
+        // Pegar resposta em texto primeiro para debug
+        const responseText = await vtexResponse.text();
 
-// Tentar parsear como JSON
-let data;
-try {
-    data = JSON.parse(responseText);
-} catch (parseError) {
-    console.error('Erro ao fazer parse:', parseError);
-    return res.status(500).json({
-        error: 'Resposta da VTEX não é JSON',
-        responsePreview: responseText.substring(0, 500),
-        vtexStatus: vtexResponse.status,
-        vtexUrl: vtexUrl
-    });
-}
+        console.log('Tipo de conteúdo:', vtexResponse.headers.get('content-type'));
+        console.log('Primeiros 500 caracteres da resposta:', responseText.substring(0, 500));
 
-        // Log para debug
-        console.log('Status VTEX:', vtexResponse.status);
-        console.log('Dados recebidos:', data.list ? `${data.list.length} pedidos` : 'sem lista');
+        // Tentar parsear como JSON
+        let data;
+        try {
+            data = JSON.parse(responseText);
+            console.log('JSON parseado com sucesso');
+            console.log('Tem lista?', !!data.list);
+            console.log('Quantidade de pedidos:', data.list ? data.list.length : 0);
+        } catch (parseError) {
+            console.error('Erro ao fazer parse do JSON:', parseError.message);
+            return res.status(500).json({
+                error: 'Resposta da VTEX não é JSON válido',
+                vtexStatus: vtexResponse.status,
+                vtexUrl: vtexUrl,
+                contentType: vtexResponse.headers.get('content-type'),
+                responsePreview: responseText.substring(0, 1000),
+                parseError: parseError.message
+            });
+        }
 
         // Retornar resposta
         if (!vtexResponse.ok) {
+            console.log('Resposta VTEX não OK:', vtexResponse.status);
             return res.status(vtexResponse.status).json({
                 error: 'Erro na API VTEX',
                 status: vtexResponse.status,
@@ -84,10 +100,11 @@ try {
             });
         }
 
+        console.log('=== DEBUG FIM - SUCESSO ===');
         return res.status(200).json(data);
 
     } catch (error) {
-        console.error('Erro no proxy:', error);
+        console.error('Erro geral no proxy:', error);
         return res.status(500).json({ 
             error: 'Erro interno',
             message: error.message,
