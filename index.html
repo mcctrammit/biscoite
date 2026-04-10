@@ -97,6 +97,75 @@
             transition: all 0.2s;
         }
 
+        .status-dropdown {
+            position: relative;
+            min-width: 180px;
+        }
+
+        .status-filter-button {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: all 0.2s;
+        }
+
+        .status-filter-button:hover {
+            border-color: var(--purple-dark);
+        }
+
+        .status-dropdown-content {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .status-dropdown-content.active {
+            display: block;
+        }
+
+        .status-checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+            gap: 10px;
+        }
+
+        .status-checkbox-item:hover {
+            background: rgba(107, 92, 255, 0.1);
+        }
+
+        .status-checkbox-item input[type="checkbox"] {
+            min-width: auto;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .status-checkbox-item span {
+            flex: 1;
+            font-size: 14px;
+        }
+
         select:focus, input:focus {
             outline: none;
             border-color: var(--purple-main);
@@ -354,9 +423,19 @@
 
             <div class="filter-group">
                 <label for="status-filter">Status</label>
-                <select id="status-filter">
-                    <option value="all">Todos os status</option>
-                </select>
+                <div class="status-dropdown">
+                    <button type="button" id="status-filter-btn" class="status-filter-button">
+                        <span id="status-filter-label">Todos os status</span>
+                        <span style="margin-left: auto;">▼</span>
+                    </button>
+                    <div id="status-filter-dropdown" class="status-dropdown-content">
+                        <label class="status-checkbox-item">
+                            <input type="checkbox" value="all" id="status-all" checked>
+                            <span>Todos os status</span>
+                        </label>
+                        <div id="status-checkboxes"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="filter-group">
@@ -559,7 +638,7 @@
                 try {
                     const queryPath = `/orders?f_creationDate=creationDate:[${startISO} TO ${endISO}]&page=${page}&per_page=${perPage}&orderBy=creationDate,desc`;
                     
-                    const response = await fetch(`${PROXY_URL}?path=${encodeURIComponent(queryPath)}`, {
+                    const response = await fetch(`${PROXY_URL}?path=${queryPath}`, {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json'
@@ -629,29 +708,74 @@
 
         // Popular filtro de status
         function populateStatusFilter(orders) {
-            const statusFilter = document.getElementById('status-filter');
+            const statusCheckboxes = document.getElementById('status-checkboxes');
             const allStatuses = [...new Set(orders.map(o => o.status))].sort();
             
-            // Limpar opções existentes (exceto "Todos")
-            statusFilter.innerHTML = '<option value="all">Todos os status</option>';
+            // Limpar checkboxes existentes
+            statusCheckboxes.innerHTML = '';
             
-            // Adicionar status encontrados
+            // Adicionar checkbox para cada status
             allStatuses.forEach(status => {
-                const option = document.createElement('option');
-                option.value = status;
-                option.textContent = statusLabel(status);
-                statusFilter.appendChild(option);
+                const label = document.createElement('label');
+                label.className = 'status-checkbox-item';
+                label.innerHTML = `
+                    <input type="checkbox" value="${status}" class="status-checkbox" checked>
+                    <span>${statusLabel(status)}</span>
+                `;
+                statusCheckboxes.appendChild(label);
+                
+                // Adicionar listener para atualizar filtro
+                label.querySelector('input').addEventListener('change', updateStatusFilter);
             });
+        }
+
+        // Atualizar label do filtro de status
+        function updateStatusFilter() {
+            const allCheckbox = document.getElementById('status-all');
+            const statusCheckboxes = document.querySelectorAll('.status-checkbox');
+            const label = document.getElementById('status-filter-label');
+            
+            // Se "Todos" foi clicado
+            if (allCheckbox && event.target === allCheckbox) {
+                statusCheckboxes.forEach(cb => cb.checked = allCheckbox.checked);
+            } else {
+                // Se algum checkbox individual foi desmarcado, desmarcar "Todos"
+                const allChecked = Array.from(statusCheckboxes).every(cb => cb.checked);
+                if (allCheckbox) {
+                    allCheckbox.checked = allChecked;
+                }
+            }
+            
+            // Atualizar label
+            const checkedBoxes = Array.from(statusCheckboxes).filter(cb => cb.checked);
+            if (checkedBoxes.length === 0 || (allCheckbox && allCheckbox.checked)) {
+                label.textContent = 'Todos os status';
+            } else if (checkedBoxes.length === 1) {
+                label.textContent = statusLabel(checkedBoxes[0].value);
+            } else {
+                label.textContent = `${checkedBoxes.length} selecionados`;
+            }
+            
+            // Atualizar dashboard
+            if (allOrders.length > 0) {
+                const filtered = filterOrders();
+                updateDashboard(filtered);
+            }
         }
 
         // Filtrar pedidos
         function filterOrders() {
             let filtered = [...allOrders];
 
-            // Filtro por status
-            const selectedStatus = document.getElementById('status-filter').value;
-            if (selectedStatus !== 'all') {
-                filtered = filtered.filter(o => o.status === selectedStatus);
+            // Filtro por status (múltiplos)
+            const allCheckbox = document.getElementById('status-all');
+            const statusCheckboxes = document.querySelectorAll('.status-checkbox');
+            const selectedStatuses = Array.from(statusCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+            
+            if (selectedStatuses.length > 0 && !(allCheckbox && allCheckbox.checked)) {
+                filtered = filtered.filter(o => selectedStatuses.includes(o.status));
             }
 
             // Filtro por busca de pedido
@@ -861,6 +985,24 @@
         // Event listeners
         document.getElementById('load-btn').addEventListener('click', loadData);
 
+        // Toggle dropdown de status
+        document.getElementById('status-filter-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.getElementById('status-filter-dropdown').classList.toggle('active');
+        });
+
+        // Fechar dropdown ao clicar fora
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('status-filter-dropdown');
+            const btn = document.getElementById('status-filter-btn');
+            if (!dropdown.contains(e.target) && e.target !== btn) {
+                dropdown.classList.remove('active');
+            }
+        });
+
+        // Listener para checkbox "Todos"
+        document.getElementById('status-all').addEventListener('change', updateStatusFilter);
+
         document.getElementById('period-select').addEventListener('change', (e) => {
             const customDates = document.getElementById('custom-dates');
             if (e.target.value === 'custom') {
@@ -868,13 +1010,6 @@
             } else {
                 customDates.classList.remove('active');
                 loadData();
-            }
-        });
-
-        document.getElementById('status-filter').addEventListener('change', () => {
-            if (allOrders.length > 0) {
-                const filtered = filterOrders();
-                updateDashboard(filtered);
             }
         });
 
