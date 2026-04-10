@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/proxy.js": {
-      "maxDuration": 60
+    "api/**/*.js": {
+      "runtime": "nodejs18.x"
     }
   }
 }
